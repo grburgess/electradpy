@@ -1,22 +1,20 @@
 #include "radiator.hh"
 
-
 namespace emission{ 
-    
-  Radiator::Radiator() {}
   
-  Radiator::Radiator(double maxg){
+  Radiator::Radiator(double maxg) {
     
-    //    n_grid_points = ngp;
-    MAX_GAMMA = maxg;
 
+    MAX_GAMMA = maxg;
+    
     emitted = false;
     kernel_exists = false;
+
     
   }
 
   Radiator::~Radiator() {
-
+    
     int i;
     
     for (i=0;i<n_photon_energies;i++)
@@ -31,16 +29,11 @@ namespace emission{
 
   void Radiator::initialize_electrons() {
     
-    // iterators
     
-
     double step, step_plus_one;
     
     // define the step size such that we have a grid slightly
-    // aout gamma max to avoid boundary issues
-
-  
-  
+    
     step = exp(1./n_grid_points*log(MAX_GAMMA));
     step_plus_one = step + 1.;
     
@@ -50,9 +43,10 @@ namespace emission{
     
     for(std::size_t i = 0; i != gamma.size(); ++i)
       {
-	
 	gamma[i]=pow(step,i);
 	gamma2[i]=gamma[i]*gamma[i];
+
+
 	
 	if(i<n_grid_points-1)
 	  {
@@ -62,32 +56,61 @@ namespace emission{
 	  {
 	    G[n_grid_points-1]=0.5*gamma[i]*step_plus_one;
 	  }
-	
+      }
 
-	
+    for(int j=1;j<=n_grid_points;j++)
+      {
+	delta_grid[j-1] = (gamma[j] - gamma[j-1]);
+
       }
 
 
-    
-    
 
-    
-
-    
+    radiation = new std::vector<double>;
     
   }
-  
 
-  std::vector<double> Radiator::emission(double * energy, int n_photon_energies, int steps)
+  std::vector<double> Radiator::electrons()
+  {
+    std::vector<double> output(n_grid_points);
+    for (int i=0; i<n_grid_points; i++)
+      {
+	output[i] = fgamma[i];
+      }
+    
+    return output;
+  }
+
+  std::vector<double> Radiator::gamma_grid()
+  {
+    std::vector<double> output(n_grid_points);
+    for (int i=0; i<n_grid_points; i++)
+      {
+	output[i] = gamma[i];
+      }
+    
+    return output;
+  }
+
+  std::vector<double> Radiator::photons(double * energy, int n_photon_energies_now, int steps, double this_B)
   {
       // precompute the synchrotron kernel
 
     int i;
 
+    n_photon_energies=n_photon_energies_now;
+
+    B = this_B;
+
+       
     // FILL THE RADIATION
-    radiation.reserve(n_photon_energies);
+    radiation->resize(n_photon_energies);
     
-    if (!kernel_exists)
+    //std::fill(radiation.begin(), radiation.end(),0.);
+    //if (!kernel_exists)
+    
+    
+    if (true)
       {
 	compute_synchrotron_kernel(energy);
       }
@@ -104,24 +127,13 @@ namespace emission{
     where B is in Gauss. 
    */
 
-
+    cool = 1.29234E-9*B*B;
 
     emission_internal_computations();
   
-    cool = 1.29234E-9*B*B;
+    
     
   
-
-    // precompute gamma*cool and gamm2*cool
-    for(std::size_t j = 0; j != gamma.size(); ++j)
-      {
-	coolg[j] = gamma[j]*cool;
-	coolg2[j] = gamma2[j]*cool;
-	
-      }
-    
-    
-    
     
     // now set the starting grid point for the synchrotron integration
     
@@ -136,16 +148,20 @@ namespace emission{
 	// compute the emitted spectrum for this round
 	// and add it to the total radiation
 	synchrotron_spectrum(energy);
-	
+
 	// now fgamma is  cooled in the round	
       }
-    
-    return radiation;
+
+
+        
+    return *radiation;
   }
   
   void Radiator::reset()
   {
     // should reset all arrays
+    fgamma.fill(0.);
+    std::fill(radiation->begin(), radiation->end(),0.);
 
   }
 
@@ -168,30 +184,31 @@ namespace emission{
     */  
     
     //std::vector<double> out_val(n_photon_energies);
-    double h,s, y[n_grid_points];
+    double y[n_grid_points];
     double sum;
-    int i,j,k;
+    
     
     // integrate (convolve) the synchrotron kernel
     // with the electron distribution via trap. rule
     
     
-    for(i=0;i<n_photon_energies;i++)
+    for(int i=0; i< n_photon_energies; i++)
       {
-	for(j=1;j<n_grid_points;j++)
+	for(int j=1; j<n_grid_points;j++)
 	  {
-	    y[j] = synchrotron_kernel[i][j] * fgamma[j] * (gamma[j] - gamma[j-1]);
+	    y[j] = synchrotron_kernel[i][j] * fgamma[j] * delta_grid[j-1];
 	  }
 	
 	sum=0.;
 	
-	for(k=1;k<n_grid_points;k++)
+	for(int k=1;k<n_grid_points;k++)
 	  {
 	    sum+=y[k];
 	  }
 	
+	
 	// add this to the total emission
-	radiation[i] += sum/(2.* energy[i]);
+	radiation->at(i) += sum/(2.* energy[i]);
 	
       }
 
@@ -202,21 +219,22 @@ namespace emission{
   void Radiator::compute_synchrotron_kernel(double * energy)
   {
     
-    double h,s, ec, y[n_grid_points];
-    double syncArg, sum;
-    int i,j,k, status;
+    double ec;
+    double syncArg;
+    int i,j,status;
     
     
     // initialize the out matrix pointers
     
     
+
     synchrotron_kernel = new double *[n_photon_energies];
     for (i=0;i<n_photon_energies;i++)
       {
 	synchrotron_kernel[i] = new double[n_grid_points];
       }
     
-    
+
     gsl_set_error_handler_off();
     
     ec = 1.5*B/Bcritical; //Put proper units in!

@@ -1,7 +1,12 @@
 #include "synchrotron_impulsive_continuous.hh"
-
+#include <iostream>
 
 namespace emission {
+
+  //  Synchrotron_Impulsive_Continuous::Synchrotron_Impulsive_Continuous() {}
+  
+  Synchrotron_Impulsive_Continuous::Synchrotron_Impulsive_Continuous(double maxg):Radiator(maxg){}
+
   void Synchrotron_Impulsive_Continuous::chang_cooper()
   {
     double delta_gamma;
@@ -18,6 +23,12 @@ namespace emission {
       {
 	// we have precomputed the contant factors
 	fgammatp1[j] = fgamma[j]/V2[j] + sf_v2_ratio[j] + fgammatp1[j+1] * V2_3_ratio[j];
+
+
+
+
+	//	std::cout<<fgammatp1[j] <<"\n";
+	
       }
     
     // Set the end point 
@@ -41,6 +52,11 @@ namespace emission {
 
   /////// SIC POWER LAW
 
+  //  SIC_PowerLaw::SIC_PowerLaw() {}
+  
+  SIC_PowerLaw::SIC_PowerLaw(double maxg) : Synchrotron_Impulsive_Continuous(maxg) {}
+
+  
 
   void SIC_PowerLaw::emission_internal_computations()
   {
@@ -66,7 +82,6 @@ namespace emission {
     delta_gamma = G[n_grid_points-1]-G[n_grid_points-2];
     
     factor1 = 1./(1. + (DT * cool * gamma2[n_grid_points-1] )/ delta_gamma);
-  
   
     for(j = n_grid_points-2; j>=1; j--)
       {
